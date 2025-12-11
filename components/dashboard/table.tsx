@@ -8,6 +8,7 @@ import { ProjectForm, type ProjectFormData } from "@/components/project-form"
 import { ProjectFilters, type ProjectFilters as ProjectFiltersType } from "@/components/project-filters"
 import { getPeopleByEmails } from "@/lib/people"
 import { api, type Project } from "@/lib/api"
+import { useToast } from "@/components/toast-provider"
 import {
   Select,
   SelectContent,
@@ -50,6 +51,7 @@ function normalizeProject(project: Project): Project & { id: string } {
 }
 
 export function Table() {
+  const toast = useToast()
   const [projects, setProjects] = useState<(Project & { id: string })[]>([])
   const [users, setUsers] = useState<Array<{ email: string; name: string }>>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -148,8 +150,9 @@ export function Table() {
       })
       await fetchProjects() // Refetch to get updated list
       setIsCreateOpen(false)
+      toast.success("Project created", "The project has been successfully created")
     } catch (err: any) {
-      alert(err.message || "Failed to create project")
+      toast.error("Failed to create project", err.message || "An error occurred")
     }
   }
 
@@ -167,8 +170,9 @@ export function Table() {
       await fetchProjects() // Refetch to get updated list
       setEditingProject(null)
       setIsEditOpen(false)
+      toast.success("Project updated", "The project has been successfully updated")
     } catch (err: any) {
-      alert(err.message || "Failed to update project")
+      toast.error("Failed to update project", err.message || "An error occurred")
     }
   }
 
@@ -181,8 +185,9 @@ export function Table() {
 
       await api.deleteProject(project._id)
       await fetchProjects() // Refetch to get updated list
+      toast.success("Project deleted", "The project has been successfully deleted")
     } catch (err: any) {
-      alert(err.message || "Failed to delete project")
+      toast.error("Failed to delete project", err.message || "An error occurred")
     }
   }
 
