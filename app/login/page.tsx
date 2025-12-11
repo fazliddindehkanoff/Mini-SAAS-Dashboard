@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { auth } from "@/lib/auth"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -12,20 +13,28 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
+  useEffect(() => {
+    // Redirect if already authenticated
+    if (auth.isAuthenticated()) {
+      router.push("/dashboard")
+    }
+  }, [router])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     
     // TODO: Replace with actual API call
     setTimeout(() => {
+      // Simulate successful login - set auth token
+      auth.setToken("dummy_token_" + Date.now())
       setIsLoading(false)
-      // For now, just redirect to dashboard
       router.push("/dashboard")
     }, 1000)
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white dark:bg-black p-4">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold">Login</CardTitle>
