@@ -19,13 +19,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { AssigneeCombobox } from "@/components/assignee-combobox"
 
 export type ProjectFormData = {
   name: string
   description: string
   status: "Planning" | "In Progress" | "Completed"
   priority: "High" | "Medium" | "Low"
-  assignee: string
+  assignees: string[] // Array of email addresses
   dueDate: string
 }
 
@@ -49,7 +50,7 @@ export function ProjectForm({
     description: "",
     status: "Planning",
     priority: "Medium",
-    assignee: "",
+    assignees: [],
     dueDate: "",
   })
 
@@ -62,7 +63,7 @@ export function ProjectForm({
         description: "",
         status: "Planning",
         priority: "Medium",
-        assignee: "",
+        assignees: [],
         dueDate: "",
       })
     }
@@ -160,17 +161,14 @@ export function ProjectForm({
               </div>
             </div>
             <div className="grid gap-2">
-              <label htmlFor="assignee" className="text-sm font-medium">
-                Assignee
+              <label htmlFor="assignees" className="text-sm font-medium">
+                Assignees
               </label>
-              <Input
-                id="assignee"
-                value={formData.assignee}
-                onChange={(e) =>
-                  setFormData({ ...formData, assignee: e.target.value })
+              <AssigneeCombobox
+                value={formData.assignees}
+                onChange={(emails) =>
+                  setFormData({ ...formData, assignees: emails })
                 }
-                placeholder="Enter assignee name"
-                required
               />
             </div>
             <div className="grid gap-2">
