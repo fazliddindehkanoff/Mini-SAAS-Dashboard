@@ -1,6 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo, useEffect } from "react"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
 import {
   DndContext,
   DragEndEvent,
@@ -23,6 +31,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, GripVertical } from "lucide-react"
 import { ProjectForm, type ProjectFormData } from "@/components/project-form"
+import { ProjectFilters, type ProjectFilters as ProjectFiltersType } from "@/components/project-filters"
+import { getPeopleByEmails } from "@/lib/people"
 
 // Dummy data
 const initialProjects = {
@@ -31,14 +41,14 @@ const initialProjects = {
       id: "2",
       name: "Mobile App Redesign",
       priority: "Medium",
-      assignee: "Jane Smith",
+      assignees: ["jane.smith@example.com"],
       dueDate: "2024-03-01",
     },
     {
       id: "5",
       name: "Security Audit",
       priority: "High",
-      assignee: "Charlie Brown",
+      assignees: ["charlie.brown@example.com", "diana.prince@example.com"],
       dueDate: "2024-02-28",
     },
   ],
@@ -47,14 +57,14 @@ const initialProjects = {
       id: "1",
       name: "E-commerce Platform",
       priority: "High",
-      assignee: "John Doe",
+      assignees: ["john.doe@example.com", "jane.smith@example.com"],
       dueDate: "2024-02-15",
     },
     {
       id: "4",
       name: "Database Migration",
       priority: "Low",
-      assignee: "Alice Williams",
+      assignees: ["alice.williams@example.com"],
       dueDate: "2024-02-20",
     },
   ],
@@ -63,7 +73,7 @@ const initialProjects = {
       id: "3",
       name: "API Integration",
       priority: "High",
-      assignee: "Bob Johnson",
+      assignees: ["bob.johnson@example.com", "alice.williams@example.com"],
       dueDate: "2024-01-30",
     },
   ],
@@ -73,7 +83,7 @@ type Project = {
   id: string
   name: string
   priority: string
-  assignee: string
+  assignees: string[] // Array of email addresses
   dueDate: string
 }
 
@@ -109,12 +119,12 @@ function KanbanCard({ project }: { project: Project }) {
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-white dark:bg-black border border-black/10 dark:border-white/10 rounded-lg p-4 mb-3 cursor-grab active:cursor-grabbing"
+      className="bg-card border border-border rounded-lg p-4 mb-3 cursor-grab active:cursor-grabbing shadow-sm"
     >
       <div className="flex items-start justify-between mb-2">
-        <h3 className="font-semibold text-sm">{project.name}</h3>
+        <h3 className="font-semibold text-sm text-card-foreground">{project.name}</h3>
         <div {...attributes} {...listeners} className="cursor-grab">
-          <GripVertical className="h-4 w-4 text-gray-400" />
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
       </div>
       <div className="flex items-center justify-between mb-2">
@@ -126,15 +136,30 @@ function KanbanCard({ project }: { project: Project }) {
           {project.priority}
         </span>
       </div>
-      <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-        {project.assignee}
+      <div className="text-xs text-muted-foreground mb-2">
+        {project.assignees.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {getPeopleByEmails(project.assignees).map((person) => (
+              <span
+                key={person.email}
+                className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-xs text-primary"
+              >
+                {person.name}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span>Unassigned</span>
+        )}
       </div>
-      <div className="text-xs text-gray-600 dark:text-gray-400">
+      <div className="text-xs text-muted-foreground">
         Due: {project.dueDate}
       </div>
     </div>
   )
 }
+
+const CARDS_PER_PAGE = 5
 
 function KanbanColumn({
   title,
@@ -150,27 +175,70 @@ function KanbanColumn({
   const { setNodeRef } = useDroppable({
     id: id,
   })
+  const [currentPage, setCurrentPage] = useState(1)
+
+  const totalPages = Math.ceil(projects.length / CARDS_PER_PAGE)
+  const startIndex = (currentPage - 1) * CARDS_PER_PAGE
+  const endIndex = startIndex + CARDS_PER_PAGE
+  const paginatedProjects = projects.slice(startIndex, endIndex)
+
+  // Reset to page 1 when projects change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [projects.length])
 
   return (
-    <div ref={setNodeRef} className="flex-1 min-w-[300px]">
-      <Card>
+    <div ref={setNodeRef} className="flex-1 min-w-[300px] flex flex-col">
+      <Card className="flex-1 flex flex-col">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">{title}</CardTitle>
-            <span className="text-sm text-gray-600 dark:text-gray-400">
+            <span className="text-sm text-muted-foreground">
               {projects.length}
             </span>
           </div>
         </CardHeader>
-        <CardContent>
-          <SortableContext
-            items={projects.map((p) => p.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            {projects.map((project) => (
-              <KanbanCard key={project.id} project={project} />
-            ))}
-          </SortableContext>
+        <CardContent className="flex-1 flex flex-col">
+          <div className="flex-1">
+            <SortableContext
+              items={projects.map((p) => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {paginatedProjects.map((project) => (
+                <KanbanCard key={project.id} project={project} />
+              ))}
+            </SortableContext>
+            {projects.length === 0 && (
+              <div className="text-center text-muted-foreground text-sm py-8">
+                No projects
+              </div>
+            )}
+          </div>
+          {totalPages > 1 && (
+            <div className="mt-4">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    />
+                  </PaginationItem>
+                  <PaginationItem>
+                    <span className="text-sm text-muted-foreground px-2">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                  </PaginationItem>
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
           <Button
             variant="ghost"
             className="w-full mt-2"
@@ -191,6 +259,11 @@ export function Kanban() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [createColumn, setCreateColumn] = useState<keyof ProjectsState | null>(null)
+  const [filters, setFilters] = useState<ProjectFiltersType>({
+    assignees: [],
+    fromDate: "",
+    toDate: "",
+  })
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -313,7 +386,7 @@ export function Kanban() {
       id: Date.now().toString(),
       name: data.name,
       priority: data.priority,
-      assignee: data.assignee,
+      assignees: data.assignees,
       dueDate: data.dueDate,
     }
 
@@ -340,19 +413,48 @@ export function Kanban() {
       description: "",
       status: statusMap[createColumn],
       priority: "Medium",
-      assignee: "",
+      assignees: [],
       dueDate: "",
     }
   }
 
-  const allProjectIds = [
-    ...projects.planning.map((p) => p.id),
-    ...projects["in-progress"].map((p) => p.id),
-    ...projects.completed.map((p) => p.id),
-  ]
+
+  // Filter projects based on filters
+  const filteredProjects: ProjectsState = useMemo(() => {
+    const filterFn = (projectList: Project[]) => {
+      return projectList.filter((project) => {
+        // Filter by assignees
+        if (filters.assignees.length > 0) {
+          const hasMatchingAssignee = filters.assignees.some((email) =>
+            project.assignees.includes(email)
+          )
+          if (!hasMatchingAssignee) return false
+        }
+
+        // Filter by date range
+        if (filters.fromDate && project.dueDate < filters.fromDate) {
+          return false
+        }
+        if (filters.toDate && project.dueDate > filters.toDate) {
+          return false
+        }
+
+        return true
+      })
+    }
+
+    return {
+      planning: filterFn(projects.planning),
+      "in-progress": filterFn(projects["in-progress"]),
+      completed: filterFn(projects.completed),
+    }
+  }, [projects, filters])
 
   return (
     <>
+      <div className="mb-4">
+        <ProjectFilters filters={filters} onFiltersChange={setFilters} />
+      </div>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -362,36 +464,36 @@ export function Kanban() {
         <div className="flex gap-4 overflow-x-auto pb-4">
           <KanbanColumn
             title="Planning"
-            projects={projects.planning}
+            projects={filteredProjects.planning}
             id="planning"
             onAddCard={handleAddCard}
           />
           <KanbanColumn
             title="In Progress"
-            projects={projects["in-progress"]}
+            projects={filteredProjects["in-progress"]}
             id="in-progress"
             onAddCard={handleAddCard}
           />
           <KanbanColumn
             title="Completed"
-            projects={projects.completed}
+            projects={filteredProjects.completed}
             id="completed"
             onAddCard={handleAddCard}
           />
         </div>
-        <DragOverlay>
-          {activeId ? (
-            <div className="bg-white dark:bg-black border border-black/10 dark:border-white/10 rounded-lg p-4 w-64 shadow-lg">
-              <div className="font-semibold text-sm">
-                {[
-                  ...projects.planning,
-                  ...projects["in-progress"],
-                  ...projects.completed,
-                ].find((p) => p.id === activeId)?.name}
-              </div>
+      <DragOverlay>
+        {activeId ? (
+          <div className="bg-card border border-border rounded-lg p-4 w-64 shadow-lg">
+            <div className="font-semibold text-sm text-card-foreground">
+              {[
+                ...projects.planning,
+                ...projects["in-progress"],
+                ...projects.completed,
+              ].find((p) => p.id === activeId)?.name}
             </div>
-          ) : null}
-        </DragOverlay>
+          </div>
+        ) : null}
+      </DragOverlay>
       </DndContext>
 
       <ProjectForm
