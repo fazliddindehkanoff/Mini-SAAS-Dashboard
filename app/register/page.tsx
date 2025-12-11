@@ -8,9 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { auth } from "@/lib/auth"
 import { useToast } from "@/components/toast-provider"
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter()
   const toast = useToast()
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -27,30 +28,30 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ name, email, password }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.message || "Login failed")
+        throw new Error(data.message || "Registration failed")
       }
 
       if (data.success && data.data?.token) {
         auth.setToken(data.data.token)
-        toast.success("Login successful", "Welcome back!")
+        toast.success("Registration successful", "You can now login with your credentials")
         router.push("/dashboard")
       } else {
         throw new Error("Invalid response from server")
       }
     } catch (error: any) {
-      console.error("Login error:", error)
-      toast.error("Login failed", error.message || "An error occurred during login")
+      console.error("Register error:", error)
+      toast.error("Registration failed", error.message || "An error occurred during registration")
     } finally {
       setIsLoading(false)
     }
@@ -60,13 +61,26 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Login</CardTitle>
+          <CardTitle className="text-2xl font-bold">Register</CardTitle>
           <CardDescription>
-            Enter your email and password to access your dashboard
+            Create a new account to get started
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="name" className="text-sm font-medium">
+                Name
+              </label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium">
                 Email
@@ -91,17 +105,18 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                minLength={6}
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isLoading ? "Creating account..." : "Create Account"}
             </Button>
           </form>
           <div className="mt-4 text-center text-sm text-muted-foreground">
             <p>
-              Don't have an account?{" "}
-              <a href="/register" className="text-primary hover:underline">
-                Register here
+              Already have an account?{" "}
+              <a href="/login" className="text-primary hover:underline">
+                Login here
               </a>
             </p>
           </div>
