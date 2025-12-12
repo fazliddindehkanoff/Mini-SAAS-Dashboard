@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import connectDB from "@/lib/db"
 import Project from "@/lib/models/Project"
 import { requireAuth } from "@/lib/middleware/auth"
+import mongoose from "mongoose"
 
 /**
  * @swagger
@@ -51,12 +52,13 @@ export async function GET(
   try {
     await connectDB()
 
-    const user = requireAuth(request)
+    // Require authentication but don't filter by user
+    requireAuth(request)
     const { id } = await params
 
+    // Allow access to any project (no user-based filtering)
     const project = await Project.findOne({
       _id: id,
-      createdBy: user.id,
     }).populate("createdBy", "name email")
 
     if (!project) {
@@ -183,15 +185,15 @@ export async function PUT(
   try {
     await connectDB()
 
-    const user = requireAuth(request)
+    // Require authentication but don't filter by user
+    requireAuth(request)
     const { id } = await params
     const body = await request.json()
     const { name, description, status, priority, assignees, dueDate } = body
 
-    // Find project and verify ownership
+    // Find project (no user-based filtering)
     const project = await Project.findOne({
       _id: id,
-      createdBy: user.id,
     })
 
     if (!project) {
@@ -300,12 +302,13 @@ export async function DELETE(
   try {
     await connectDB()
 
-    const user = requireAuth(request)
+    // Require authentication but don't filter by user
+    requireAuth(request)
     const { id } = await params
 
+    // Allow deletion of any project (no user-based filtering)
     const project = await Project.findOneAndDelete({
       _id: id,
-      createdBy: user.id,
     })
 
     if (!project) {
