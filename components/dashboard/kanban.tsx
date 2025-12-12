@@ -34,6 +34,7 @@ import { ProjectForm, type ProjectFormData } from "@/components/project-form"
 import { ProjectFilters, type ProjectFilters as ProjectFiltersType } from "@/components/project-filters"
 import { getPeopleByEmails } from "@/lib/people"
 import { api, type Project } from "@/lib/api"
+import { useToast } from "@/components/toast-provider"
 import {
   Select,
   SelectContent,
@@ -267,6 +268,7 @@ function KanbanColumn({
 }
 
 export function Kanban() {
+  const toast = useToast()
   const [projects, setProjects] = useState<ProjectsState>({
     planning: [],
     "in-progress": [],
@@ -422,8 +424,9 @@ export function Kanban() {
           newProjects[newColumn] = [...newProjects[newColumn], { ...activeProject!, status: newStatus }]
           return newProjects
         })
+        toast.success("Project moved", `Project moved to ${newStatus}`)
       } catch (err: any) {
-        alert(err.message || "Failed to update project status")
+        toast.error("Failed to update project", err.message || "An error occurred")
       }
     } else {
       // If dropped on another card, find its column and index
@@ -466,9 +469,10 @@ export function Kanban() {
               
               return newProjects
             })
+            toast.success("Project moved", `Project moved to ${newStatus}`)
           } catch (err: any) {
             console.error("Failed to update project status:", err)
-            alert(err.message || "Failed to update project status")
+            toast.error("Failed to update project", err.message || "An error occurred")
           }
         }
       }
@@ -497,8 +501,9 @@ export function Kanban() {
       await fetchProjects() // Refetch to get updated list
       setIsCreateOpen(false)
       setCreateColumn(null)
+      toast.success("Project created", "The project has been successfully created")
     } catch (err: any) {
-      alert(err.message || "Failed to create project")
+      toast.error("Failed to create project", err.message || "An error occurred")
     }
   }
 
