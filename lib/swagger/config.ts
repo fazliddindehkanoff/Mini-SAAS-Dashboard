@@ -1,4 +1,5 @@
 import swaggerJsdoc, { Options } from "swagger-jsdoc"
+import path from "path"
 
 const options: Options = {
   definition: {
@@ -253,8 +254,16 @@ const options: Options = {
     },
     tags: [
       {
+        name: "Health",
+        description: "Health check and system status endpoints",
+      },
+      {
         name: "Authentication",
         description: "User authentication endpoints",
+      },
+      {
+        name: "Users",
+        description: "User management endpoints",
       },
       {
         name: "Projects",
@@ -263,7 +272,7 @@ const options: Options = {
     ],
   },
   apis: [
-    "./app/api/**/*.ts", // Path to the API files
+    path.join(process.cwd(), "app/api/**/route.ts"), // Path to the API route files
   ],
 }
 
