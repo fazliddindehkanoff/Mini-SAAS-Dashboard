@@ -19,7 +19,7 @@ export default function RegisterPage() {
   useEffect(() => {
     // Only check authentication on client side to avoid hydration mismatch
     if (typeof window !== "undefined" && auth.isAuthenticated()) {
-      router.push("/dashboard")
+      router.push("/")
     }
   }, [router])
 
@@ -45,7 +45,7 @@ export default function RegisterPage() {
       if (data.success && data.data?.token) {
         auth.setToken(data.data.token)
         toast.success("Registration successful", "You can now login with your credentials")
-        router.push("/dashboard")
+        router.push("/")
       } else {
         throw new Error("Invalid response from server")
       }

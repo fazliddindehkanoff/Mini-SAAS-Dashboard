@@ -44,7 +44,7 @@ export default function LoginPage() {
       if (data.success && data.data?.token) {
         auth.setToken(data.data.token)
         toast.success("Login successful", "Welcome back!")
-        router.push("/dashboard")
+        router.push("/")
       } else {
         throw new Error("Invalid response from server")
       }
