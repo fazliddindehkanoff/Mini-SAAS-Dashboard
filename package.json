@@ -55,6 +55,10 @@
     "react-inspector": {
       "react": "$react",
       "react-dom": "$react-dom"
+    },
+    "react-copy-to-clipboard": {
+      "react": "$react",
+      "react-dom": "$react-dom"
     }
   }
 }
