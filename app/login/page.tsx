@@ -18,7 +18,7 @@ export default function LoginPage() {
   useEffect(() => {
     // Only check authentication on client side to avoid hydration mismatch
     if (typeof window !== "undefined" && auth.isAuthenticated()) {
-      router.push("/dashboard")
+      router.push("/")
     }
   }, [router])
 
