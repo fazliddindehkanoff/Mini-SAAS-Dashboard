@@ -1,7 +1,7 @@
 "use client"
 
-// Simple auth utility for client-side protection
-// This will be replaced with proper backend auth later
+// Auth utility for client-side token management
+// Works with backend JWT authentication
 
 const AUTH_KEY = "auth_token"
 
@@ -27,6 +27,15 @@ export const auth = {
 
   isAuthenticated: (): boolean => {
     return auth.getToken() !== null
+  },
+
+  // Get authorization header for API requests
+  getAuthHeader: (): { Authorization: string } | {} => {
+    const token = auth.getToken()
+    if (token) {
+      return { Authorization: `Bearer ${token}` }
+    }
+    return {}
   },
 }
 

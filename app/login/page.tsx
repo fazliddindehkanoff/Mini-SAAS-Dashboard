@@ -23,14 +23,34 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    
-    // TODO: Replace with actual API call
-    setTimeout(() => {
-      // Simulate successful login - set auth token
-      auth.setToken("dummy_token_" + Date.now())
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || "Login failed")
+      }
+
+      if (data.success && data.data?.token) {
+        auth.setToken(data.data.token)
+        router.push("/dashboard")
+      } else {
+        throw new Error("Invalid response from server")
+      }
+    } catch (error: any) {
+      console.error("Login error:", error)
+      alert(error.message || "An error occurred during login")
+    } finally {
       setIsLoading(false)
-      router.push("/dashboard")
-    }, 1000)
+    }
   }
 
   return (
@@ -74,6 +94,14 @@ export default function LoginPage() {
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
+          <div className="mt-4 text-center text-sm text-muted-foreground">
+            <p>
+              Don't have an account?{" "}
+              <a href="/register" className="text-primary hover:underline">
+                Register here
+              </a>
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
