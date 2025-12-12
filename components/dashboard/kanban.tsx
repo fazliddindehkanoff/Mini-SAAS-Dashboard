@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useEffect } from "react"
 import {
   Pagination,
   PaginationContent,
   PaginationItem,
-  PaginationLink,
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
@@ -31,7 +30,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, GripVertical, Loader2 } from "lucide-react"
 import { ProjectForm, type ProjectFormData } from "@/components/project-form"
-import { ProjectFilters, type ProjectFilters as ProjectFiltersType } from "@/components/project-filters"
 import { getPeopleByEmails } from "@/lib/people"
 import { api, type Project } from "@/lib/api"
 import { useToast } from "@/components/toast-provider"
@@ -51,28 +49,22 @@ type ProjectsState = {
   completed: ProjectWithId[]
 }
 
-// Helper to convert API project to frontend format
-function normalizeProject(project: Project): ProjectWithId {
-  return {
-    ...project,
-    id: project._id,
-    dueDate: project.dueDate ? new Date(project.dueDate).toISOString().split("T")[0] : "",
+type KanbanProps = {
+  data: {
+    projects: ProjectsState
+    users: Array<{ email: string; name: string }>
   }
+  loading: {
+    isLoading: boolean
+    error: string | null
+  }
+  pagination: {
+    currentPage: number
+    onPageChange: (page: number) => void
+  }
+  onRefetch: () => void
 }
 
-// Helper to map status to column key
-function statusToColumn(status: string): keyof ProjectsState {
-  if (status === "In Progress") return "in-progress"
-  if (status === "Completed") return "completed"
-  return "planning"
-}
-
-// Helper to map column key to status
-function columnToStatus(column: keyof ProjectsState): "Planning" | "In Progress" | "Completed" {
-  if (column === "in-progress") return "In Progress"
-  if (column === "completed") return "Completed"
-  return "Planning"
-}
 
 const priorityColors = {
   High: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
@@ -143,6 +135,13 @@ function KanbanCard({ project, users }: { project: ProjectWithId; users: Array<{
 const DEFAULT_CARDS_PER_PAGE = 5
 const PAGE_SIZE_OPTIONS = [3, 5, 10, 15]
 
+// Helper to map column key to status
+function columnToStatus(column: keyof ProjectsState): "Planning" | "In Progress" | "Completed" {
+  if (column === "in-progress") return "In Progress"
+  if (column === "completed") return "Completed"
+  return "Planning"
+}
+
 function KanbanColumn({
   title,
   projects,
@@ -151,6 +150,8 @@ function KanbanColumn({
   users,
   itemsPerPage,
   onItemsPerPageChange,
+  currentPage,
+  onPageChange,
 }: {
   title: string
   projects: ProjectWithId[]
@@ -159,21 +160,17 @@ function KanbanColumn({
   users: Array<{ email: string; name: string }>
   itemsPerPage: number
   onItemsPerPageChange: (size: number) => void
+  currentPage: number
+  onPageChange: (page: number) => void
 }) {
   const { setNodeRef } = useDroppable({
     id: id,
   })
-  const [currentPage, setCurrentPage] = useState(1)
 
   const totalPages = Math.ceil(projects.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const paginatedProjects = projects.slice(startIndex, endIndex)
-
-  // Reset to page 1 when projects or page size change
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [projects.length, itemsPerPage])
 
   return (
     <div ref={setNodeRef} className="flex-1 min-w-[300px] flex flex-col">
@@ -194,7 +191,7 @@ function KanbanColumn({
                 value={itemsPerPage.toString()}
                 onValueChange={(value) => {
                   onItemsPerPageChange(Number(value))
-                  setCurrentPage(1)
+                  onPageChange(1)
                 }}
               >
                 <SelectTrigger id="kanban-page-size" className="w-20 h-8 text-xs">
@@ -233,7 +230,7 @@ function KanbanColumn({
                 <PaginationContent>
                   <PaginationItem>
                     <PaginationPrevious
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      onClick={() => onPageChange(Math.max(1, currentPage - 1))}
                       disabled={currentPage === 1}
                     />
                   </PaginationItem>
@@ -244,7 +241,7 @@ function KanbanColumn({
                   </PaginationItem>
                   <PaginationItem>
                     <PaginationNext
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
                       disabled={currentPage === totalPages}
                     />
                   </PaginationItem>
@@ -267,96 +264,22 @@ function KanbanColumn({
   )
 }
 
-export function Kanban() {
+export function Kanban({ data, loading, pagination, onRefetch }: KanbanProps) {
+  const { projects, users } = data
+  const { isLoading, error } = loading
+  const { currentPage, onPageChange } = pagination
+  
   const toast = useToast()
-  const [projects, setProjects] = useState<ProjectsState>({
-    planning: [],
-    "in-progress": [],
-    completed: [],
-  })
-  const [users, setUsers] = useState<Array<{ email: string; name: string }>>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [createColumn, setCreateColumn] = useState<keyof ProjectsState | null>(null)
-  const [filters, setFilters] = useState<ProjectFiltersType>({
-    assignees: [],
-    fromDate: "",
-    toDate: "",
-  })
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_CARDS_PER_PAGE)
+  const [localProjects, setLocalProjects] = useState<ProjectsState>(projects)
 
-  // Fetch users and projects from API
+  // Sync local projects with props
   useEffect(() => {
-    fetchUsers()
-    fetchProjects()
-  }, [])
-
-  const fetchUsers = async () => {
-    try {
-      const fetchedUsers = await api.getUsers()
-      setUsers(
-        fetchedUsers.map((user) => ({
-          email: user.email,
-          name: user.name,
-        }      ))
-      )
-    } catch (err) {
-      // Silently handle user fetch errors
-    }
-  }
-
-  const fetchProjects = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      // For Kanban, we fetch all projects (no pagination on backend for Kanban view)
-      // Since Kanban has its own per-column pagination
-      const apiFilters: any = {
-        limit: 1000, // Fetch all projects for Kanban view
-      }
-      if (filters.fromDate) apiFilters.fromDate = filters.fromDate
-      if (filters.toDate) apiFilters.toDate = filters.toDate
-      if (filters.assignees.length > 0) {
-        apiFilters.assignee = filters.assignees[0]
-      }
-
-      const result = await api.getProjects(apiFilters)
-      const normalizedProjects = result.projects.map(normalizeProject)
-
-      // Apply client-side filtering for multiple assignees
-      let filtered = normalizedProjects
-      if (filters.assignees.length > 0) {
-        filtered = normalizedProjects.filter((project) =>
-          filters.assignees.some((email) => project.assignees.includes(email))
-        )
-      }
-
-      // Group projects by status
-      const grouped: ProjectsState = {
-        planning: [],
-        "in-progress": [],
-        completed: [],
-      }
-
-      filtered.forEach((project) => {
-        const column = statusToColumn(project.status)
-        grouped[column].push(project)
-      })
-
-      setProjects(grouped)
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch projects")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // Refetch when filters change
-  useEffect(() => {
-    fetchProjects()
-  }, [filters.fromDate, filters.toDate])
+    setLocalProjects(projects)
+  }, [projects])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -386,7 +309,7 @@ export function Kanban() {
     let activeColumn: keyof ProjectsState | null = null
     let activeIndex = -1
 
-    for (const [column, items] of Object.entries(projects)) {
+    for (const [column, items] of Object.entries(localProjects)) {
       const index = items.findIndex((p) => p.id === activeId)
       if (index !== -1) {
         activeProject = items[index]
@@ -416,7 +339,7 @@ export function Kanban() {
         await api.updateProject(activeProject._id, { status: newStatus })
         
         // Update local state
-        setProjects((prev) => {
+        setLocalProjects((prev) => {
           const newProjects = { ...prev }
           newProjects[activeColumn!] = newProjects[activeColumn!].filter(
             (p) => p.id !== activeId
@@ -424,6 +347,7 @@ export function Kanban() {
           newProjects[newColumn] = [...newProjects[newColumn], { ...activeProject!, status: newStatus }]
           return newProjects
         })
+        onRefetch() // Refetch to sync with server
         toast.success("Project moved", `Project moved to ${newStatus}`)
       } catch (err: any) {
         toast.error("Failed to update project", err.message || "An error occurred")
@@ -433,7 +357,7 @@ export function Kanban() {
       let targetColumn: keyof ProjectsState | null = null
       let targetIndex = -1
 
-      for (const [column, items] of Object.entries(projects)) {
+      for (const [column, items] of Object.entries(localProjects)) {
         const index = items.findIndex((p) => p.id === overId)
         if (index !== -1) {
           targetColumn = column as keyof ProjectsState
@@ -445,7 +369,7 @@ export function Kanban() {
       if (targetColumn) {
         if (activeColumn === targetColumn) {
           // Reordering within the same column - just update local state
-          setProjects((prev) => {
+          setLocalProjects((prev) => {
             const newProjects = { ...prev }
             const columnItems = [...newProjects[activeColumn!]]
             newProjects[activeColumn!] = arrayMove(columnItems, activeIndex, targetIndex)
@@ -458,7 +382,7 @@ export function Kanban() {
             await api.updateProject(activeProject._id, { status: newStatus })
             
             // Update local state
-            setProjects((prev) => {
+            setLocalProjects((prev) => {
               const newProjects = { ...prev }
               const sourceItems = [...newProjects[activeColumn!]]
               const targetItems = [...newProjects[targetColumn!]]
@@ -469,6 +393,7 @@ export function Kanban() {
               
               return newProjects
             })
+            onRefetch() // Refetch to sync with server
             toast.success("Project moved", `Project moved to ${newStatus}`)
           } catch (err: any) {
             console.error("Failed to update project status:", err)
@@ -498,7 +423,7 @@ export function Kanban() {
         assignees: data.assignees,
         dueDate: data.dueDate,
       })
-      await fetchProjects() // Refetch to get updated list
+      onRefetch() // Refetch to get updated list
       setIsCreateOpen(false)
       setCreateColumn(null)
       toast.success("Project created", "The project has been successfully created")
@@ -527,26 +452,18 @@ export function Kanban() {
   }
 
 
-  // Projects are already filtered in fetchProjects
-  const filteredProjects: ProjectsState = useMemo(() => {
-    return projects
-  }, [projects])
-
   return (
     <>
-      <div className="mb-4">
-        <ProjectFilters filters={filters} onFiltersChange={setFilters} />
-      </div>
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           <span className="ml-2 text-muted-foreground">Loading projects...</span>
         </div>
-      ) : error ? (
+            ) : error ? (
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <p className="text-destructive mb-2">{error}</p>
-            <Button variant="outline" onClick={fetchProjects}>
+            <Button variant="outline" onClick={onRefetch}>
               Retry
             </Button>
           </div>
@@ -561,30 +478,36 @@ export function Kanban() {
         <div className="flex gap-4 overflow-x-auto pb-4">
           <KanbanColumn
             title="Planning"
-            projects={filteredProjects.planning}
+            projects={localProjects.planning}
             id="planning"
             onAddCard={handleAddCard}
             users={users}
             itemsPerPage={itemsPerPage}
             onItemsPerPageChange={setItemsPerPage}
+            currentPage={currentPage}
+            onPageChange={onPageChange}
           />
           <KanbanColumn
             title="In Progress"
-            projects={filteredProjects["in-progress"]}
+            projects={localProjects["in-progress"]}
             id="in-progress"
             onAddCard={handleAddCard}
             users={users}
             itemsPerPage={itemsPerPage}
             onItemsPerPageChange={setItemsPerPage}
+            currentPage={currentPage}
+            onPageChange={onPageChange}
           />
           <KanbanColumn
             title="Completed"
-            projects={filteredProjects.completed}
+            projects={localProjects.completed}
             id="completed"
             onAddCard={handleAddCard}
             users={users}
             itemsPerPage={itemsPerPage}
             onItemsPerPageChange={setItemsPerPage}
+            currentPage={currentPage}
+            onPageChange={onPageChange}
           />
         </div>
       <DragOverlay>
@@ -592,9 +515,9 @@ export function Kanban() {
           <div className="bg-card border border-border rounded-lg p-4 w-64 shadow-lg">
             <div className="font-semibold text-sm text-card-foreground">
               {[
-                ...projects.planning,
-                ...projects["in-progress"],
-                ...projects.completed,
+                ...localProjects.planning,
+                ...localProjects["in-progress"],
+                ...localProjects.completed,
               ].find((p) => p.id === activeId)?.name}
             </div>
           </div>

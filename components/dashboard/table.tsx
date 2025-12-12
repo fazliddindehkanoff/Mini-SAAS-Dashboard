@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, Edit, Trash2, Loader2 } from "lucide-react"
 import { ProjectForm, type ProjectFormData } from "@/components/project-form"
-import { ProjectFilters, type ProjectFilters as ProjectFiltersType } from "@/components/project-filters"
 import { getPeopleByEmails } from "@/lib/people"
 import { api, type Project } from "@/lib/api"
 import { useToast } from "@/components/toast-provider"
@@ -38,102 +37,36 @@ const priorityColors = {
   Low: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
 }
 
-const DEFAULT_ITEMS_PER_PAGE = 10
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50]
 
-// Helper to convert API project to frontend format
-function normalizeProject(project: Project): Project & { id: string } {
-  return {
-    ...project,
-    id: project._id,
-    dueDate: project.dueDate ? new Date(project.dueDate).toISOString().split("T")[0] : "",
+type TableProps = {
+  data: {
+    projects: (Project & { id: string })[]
+    users: Array<{ email: string; name: string }>
+    totalProjects: number
+    totalPages: number
   }
+  loading: {
+    isLoading: boolean
+    error: string | null
+  }
+  pagination: {
+    currentPage: number
+    itemsPerPage: number
+    onPageChange: (page: number) => void
+    onItemsPerPageChange: (size: number) => void
+  }
+  onRefetch: () => void
 }
 
-export function Table() {
+export function Table({ data, loading, pagination, onRefetch }: TableProps) {
+  const { projects, users, totalProjects, totalPages } = data
+  const { isLoading, error } = loading
+  const { currentPage, itemsPerPage, onPageChange, onItemsPerPageChange } = pagination
   const toast = useToast()
-  const [projects, setProjects] = useState<(Project & { id: string })[]>([])
-  const [users, setUsers] = useState<Array<{ email: string; name: string }>>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<(Project & { id: string }) | null>(null)
-  const [filters, setFilters] = useState<ProjectFiltersType>({
-    assignees: [],
-    fromDate: "",
-    toDate: "",
-  })
-  const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
-
-  // Fetch users and projects from API
-  useEffect(() => {
-    fetchUsers()
-    fetchProjects()
-  }, [])
-
-  const fetchUsers = async () => {
-    try {
-      const fetchedUsers = await api.getUsers()
-      setUsers(
-        fetchedUsers.map((user) => ({
-          email: user.email,
-          name: user.name,
-        }      ))
-      )
-    } catch (err) {
-      // Silently handle user fetch errors
-    }
-  }
-
-  const [totalProjects, setTotalProjects] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-
-  const fetchProjects = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const apiFilters: any = {
-        page: currentPage,
-        limit: itemsPerPage,
-      }
-      if (filters.fromDate) apiFilters.fromDate = filters.fromDate
-      if (filters.toDate) apiFilters.toDate = filters.toDate
-      if (filters.assignees.length > 0) {
-        apiFilters.assignee = filters.assignees[0]
-      }
-
-      const result = await api.getProjects(apiFilters)
-      const normalizedProjects = result.projects.map(normalizeProject)
-
-      // Apply client-side filtering for multiple assignees
-      let filtered = normalizedProjects
-      if (filters.assignees.length > 0) {
-        filtered = normalizedProjects.filter((project) =>
-          filters.assignees.some((email) => project.assignees.includes(email))
-        )
-      }
-
-      setProjects(filtered)
-      setTotalProjects(result.total)
-      setTotalPages(result.totalPages)
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch projects")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // Refetch when filters, page, or page size change
-  useEffect(() => {
-    fetchProjects()
-  }, [filters.fromDate, filters.toDate, currentPage, itemsPerPage])
-
-  // Reset to page 1 when filters or page size change
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [filters, itemsPerPage])
 
   // Projects are already paginated from backend
   const paginatedProjects = projects
@@ -148,7 +81,7 @@ export function Table() {
         assignees: data.assignees,
         dueDate: data.dueDate,
       })
-      await fetchProjects() // Refetch to get updated list
+      onRefetch() // Refetch to get updated list
       setIsCreateOpen(false)
       toast.success("Project created", "The project has been successfully created")
     } catch (err: any) {
@@ -167,7 +100,7 @@ export function Table() {
         assignees: data.assignees,
         dueDate: data.dueDate,
       })
-      await fetchProjects() // Refetch to get updated list
+      onRefetch() // Refetch to get updated list
       setEditingProject(null)
       setIsEditOpen(false)
       toast.success("Project updated", "The project has been successfully updated")
@@ -184,7 +117,7 @@ export function Table() {
       if (!project) return
 
       await api.deleteProject(project._id)
-      await fetchProjects() // Refetch to get updated list
+      onRefetch() // Refetch to get updated list
       toast.success("Project deleted", "The project has been successfully deleted")
     } catch (err: any) {
       toast.error("Failed to delete project", err.message || "An error occurred")
@@ -198,9 +131,7 @@ export function Table() {
 
   return (
     <>
-      <div className="space-y-4">
-        <ProjectFilters filters={filters} onFiltersChange={setFilters} />
-        <Card>
+      <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Projects ({totalProjects})</CardTitle>
@@ -212,8 +143,8 @@ export function Table() {
                   <Select
                     value={itemsPerPage.toString()}
                     onValueChange={(value) => {
-                      setItemsPerPage(Number(value))
-                      setCurrentPage(1)
+                      onItemsPerPageChange(Number(value))
+                      onPageChange(1)
                     }}
                   >
                     <SelectTrigger id="page-size" className="w-20">
@@ -245,7 +176,7 @@ export function Table() {
               <div className="flex items-center justify-center py-12">
                 <div className="text-center">
                   <p className="text-destructive mb-2">{error}</p>
-                  <Button variant="outline" onClick={fetchProjects}>
+                  <Button variant="outline" onClick={onRefetch}>
                     Retry
                   </Button>
                 </div>
@@ -355,7 +286,7 @@ export function Table() {
                   <PaginationContent>
                     <PaginationItem>
                       <PaginationPrevious
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        onClick={() => onPageChange(Math.max(1, currentPage - 1))}
                         disabled={currentPage === 1}
                       />
                     </PaginationItem>
@@ -369,7 +300,7 @@ export function Table() {
                         return (
                           <PaginationItem key={page}>
                             <PaginationLink
-                              onClick={() => setCurrentPage(page)}
+                              onClick={() => onPageChange(page)}
                               isActive={currentPage === page}
                             >
                               {page}
@@ -387,7 +318,7 @@ export function Table() {
                     })}
                     <PaginationItem>
                       <PaginationNext
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
                         disabled={currentPage === totalPages}
                       />
                     </PaginationItem>
@@ -397,7 +328,6 @@ export function Table() {
             )}
           </CardContent>
         </Card>
-      </div>
 
       <ProjectForm
         open={isCreateOpen}
