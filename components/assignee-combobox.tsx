@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, X } from "lucide-react"
+import { Check, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -16,7 +16,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { people, type Person } from "@/lib/people"
+import { type Person } from "@/lib/people"
+import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 interface AssigneeComboboxProps {
@@ -27,6 +28,33 @@ interface AssigneeComboboxProps {
 export function AssigneeCombobox({ value, onChange }: AssigneeComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
+  const [people, setPeople] = React.useState<Person[]>([])
+  const [isLoading, setIsLoading] = React.useState(false)
+
+  // Fetch users from API when component mounts or popover opens
+  React.useEffect(() => {
+    if (open && people.length === 0 && !isLoading) {
+      fetchUsers()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const fetchUsers = async () => {
+    setIsLoading(true)
+    try {
+      const users = await api.getUsers()
+      setPeople(
+        users.map((user) => ({
+          email: user.email,
+          name: user.name,
+        }))
+      )
+    } catch (error) {
+      // Silently handle user fetch errors
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const selectedPeople = people.filter((p) => value.includes(p.email))
   const filteredPeople = people.filter(
@@ -72,9 +100,16 @@ export function AssigneeCombobox({ value, onChange }: AssigneeComboboxProps) {
               onValueChange={setSearchQuery}
             />
             <CommandList>
-              <CommandEmpty>No people found.</CommandEmpty>
-              <CommandGroup>
-                {filteredPeople.map((person) => {
+              {isLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">Loading users...</span>
+                </div>
+              ) : (
+                <>
+                  <CommandEmpty>No users found.</CommandEmpty>
+                  <CommandGroup>
+                    {filteredPeople.map((person) => {
                   const isSelected = value.includes(person.email)
                   return (
                     <CommandItem
@@ -112,6 +147,8 @@ export function AssigneeCombobox({ value, onChange }: AssigneeComboboxProps) {
                   )
                 })}
               </CommandGroup>
+                </>
+              )}
             </CommandList>
           </Command>
         </PopoverContent>
