@@ -85,7 +85,7 @@ class ApiClient {
   // Projects API
   async getProjects(filters?: {
     status?: string
-    assignee?: string
+    assignee?: string | string[]
     fromDate?: string
     toDate?: string
     page?: number
@@ -93,7 +93,11 @@ class ApiClient {
   }): Promise<{ projects: Project[]; total: number; page: number; limit: number; totalPages: number }> {
     const queryParams = new URLSearchParams()
     if (filters?.status) queryParams.append("status", filters.status)
-    if (filters?.assignee) queryParams.append("assignee", filters.assignee)
+    if (filters?.assignee) {
+      // Handle both single assignee and array of assignees
+      const assignees = Array.isArray(filters.assignee) ? filters.assignee : [filters.assignee]
+      assignees.forEach((assignee) => queryParams.append("assignee", assignee))
+    }
     if (filters?.fromDate) queryParams.append("fromDate", filters.fromDate)
     if (filters?.toDate) queryParams.append("toDate", filters.toDate)
     if (filters?.page) queryParams.append("page", filters.page.toString())

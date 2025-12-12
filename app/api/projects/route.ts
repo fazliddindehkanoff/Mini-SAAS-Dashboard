@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
     // Get query parameters for filtering and pagination
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
-    const assignee = searchParams.get("assignee")
+    const assignees = searchParams.getAll("assignee") // Get all assignee parameters
     const fromDate = searchParams.get("fromDate")
     const toDate = searchParams.get("toDate")
     // Pagination parameters with validation
@@ -126,9 +126,9 @@ export async function GET(request: NextRequest) {
       filter.status = status
     }
 
-    if (assignee) {
-      // Filter by specific assignee email
-      filter.assignees = { $in: [assignee] }
+    if (assignees.length > 0) {
+      // Filter by assignee emails (supports multiple assignees)
+      filter.assignees = { $in: assignees }
     }
 
     if (fromDate || toDate) {
