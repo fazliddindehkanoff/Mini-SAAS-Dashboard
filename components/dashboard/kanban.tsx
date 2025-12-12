@@ -29,68 +29,48 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, GripVertical } from "lucide-react"
+import { Plus, GripVertical, Loader2 } from "lucide-react"
 import { ProjectForm, type ProjectFormData } from "@/components/project-form"
 import { ProjectFilters, type ProjectFilters as ProjectFiltersType } from "@/components/project-filters"
 import { getPeopleByEmails } from "@/lib/people"
+import { api, type Project } from "@/lib/api"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
-// Dummy data
-const initialProjects = {
-  planning: [
-    {
-      id: "2",
-      name: "Mobile App Redesign",
-      priority: "Medium",
-      assignees: ["jane.smith@example.com"],
-      dueDate: "2024-03-01",
-    },
-    {
-      id: "5",
-      name: "Security Audit",
-      priority: "High",
-      assignees: ["charlie.brown@example.com", "diana.prince@example.com"],
-      dueDate: "2024-02-28",
-    },
-  ],
-  "in-progress": [
-    {
-      id: "1",
-      name: "E-commerce Platform",
-      priority: "High",
-      assignees: ["john.doe@example.com", "jane.smith@example.com"],
-      dueDate: "2024-02-15",
-    },
-    {
-      id: "4",
-      name: "Database Migration",
-      priority: "Low",
-      assignees: ["alice.williams@example.com"],
-      dueDate: "2024-02-20",
-    },
-  ],
-  completed: [
-    {
-      id: "3",
-      name: "API Integration",
-      priority: "High",
-      assignees: ["bob.johnson@example.com", "alice.williams@example.com"],
-      dueDate: "2024-01-30",
-    },
-  ],
-}
-
-type Project = {
-  id: string
-  name: string
-  priority: string
-  assignees: string[] // Array of email addresses
-  dueDate: string
-}
+type ProjectWithId = Project & { id: string }
 
 type ProjectsState = {
-  planning: Project[]
-  "in-progress": Project[]
-  completed: Project[]
+  planning: ProjectWithId[]
+  "in-progress": ProjectWithId[]
+  completed: ProjectWithId[]
+}
+
+// Helper to convert API project to frontend format
+function normalizeProject(project: Project): ProjectWithId {
+  return {
+    ...project,
+    id: project._id,
+    dueDate: project.dueDate ? new Date(project.dueDate).toISOString().split("T")[0] : "",
+  }
+}
+
+// Helper to map status to column key
+function statusToColumn(status: string): keyof ProjectsState {
+  if (status === "In Progress") return "in-progress"
+  if (status === "Completed") return "completed"
+  return "planning"
+}
+
+// Helper to map column key to status
+function columnToStatus(column: keyof ProjectsState): "Planning" | "In Progress" | "Completed" {
+  if (column === "in-progress") return "In Progress"
+  if (column === "completed") return "Completed"
+  return "Planning"
 }
 
 const priorityColors = {
@@ -99,7 +79,7 @@ const priorityColors = {
   Low: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
 }
 
-function KanbanCard({ project }: { project: Project }) {
+function KanbanCard({ project, users }: { project: ProjectWithId; users: Array<{ email: string; name: string }> }) {
   const {
     attributes,
     listeners,
@@ -139,7 +119,7 @@ function KanbanCard({ project }: { project: Project }) {
       <div className="text-xs text-muted-foreground mb-2">
         {project.assignees.length > 0 ? (
           <div className="flex flex-wrap gap-1">
-            {getPeopleByEmails(project.assignees).map((person) => (
+            {getPeopleByEmails(project.assignees, users).map((person) => (
               <span
                 key={person.email}
                 className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-xs text-primary"
@@ -159,33 +139,40 @@ function KanbanCard({ project }: { project: Project }) {
   )
 }
 
-const CARDS_PER_PAGE = 5
+const DEFAULT_CARDS_PER_PAGE = 5
+const PAGE_SIZE_OPTIONS = [3, 5, 10, 15]
 
 function KanbanColumn({
   title,
   projects,
   id,
   onAddCard,
+  users,
+  itemsPerPage,
+  onItemsPerPageChange,
 }: {
   title: string
-  projects: Project[]
+  projects: ProjectWithId[]
   id: keyof ProjectsState
   onAddCard: (columnId: keyof ProjectsState) => void
+  users: Array<{ email: string; name: string }>
+  itemsPerPage: number
+  onItemsPerPageChange: (size: number) => void
 }) {
   const { setNodeRef } = useDroppable({
     id: id,
   })
   const [currentPage, setCurrentPage] = useState(1)
 
-  const totalPages = Math.ceil(projects.length / CARDS_PER_PAGE)
-  const startIndex = (currentPage - 1) * CARDS_PER_PAGE
-  const endIndex = startIndex + CARDS_PER_PAGE
+  const totalPages = Math.ceil(projects.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
   const paginatedProjects = projects.slice(startIndex, endIndex)
 
-  // Reset to page 1 when projects change
+  // Reset to page 1 when projects or page size change
   useEffect(() => {
     setCurrentPage(1)
-  }, [projects.length])
+  }, [projects.length, itemsPerPage])
 
   return (
     <div ref={setNodeRef} className="flex-1 min-w-[300px] flex flex-col">
@@ -197,6 +184,31 @@ function KanbanColumn({
               {projects.length}
             </span>
           </div>
+          {id === "planning" && (
+            <div className="flex items-center gap-2 mt-2">
+              <label htmlFor="kanban-page-size" className="text-xs text-muted-foreground">
+                Cards per page:
+              </label>
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(value) => {
+                  onItemsPerPageChange(Number(value))
+                  setCurrentPage(1)
+                }}
+              >
+                <SelectTrigger id="kanban-page-size" className="w-20 h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <SelectItem key={size} value={size.toString()}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="flex-1 flex flex-col">
           <div className="flex-1">
@@ -205,7 +217,7 @@ function KanbanColumn({
               strategy={verticalListSortingStrategy}
             >
               {paginatedProjects.map((project) => (
-                <KanbanCard key={project.id} project={project} />
+                <KanbanCard key={project.id} project={project} users={users} />
               ))}
             </SortableContext>
             {projects.length === 0 && (
@@ -255,7 +267,14 @@ function KanbanColumn({
 }
 
 export function Kanban() {
-  const [projects, setProjects] = useState<ProjectsState>(initialProjects)
+  const [projects, setProjects] = useState<ProjectsState>({
+    planning: [],
+    "in-progress": [],
+    completed: [],
+  })
+  const [users, setUsers] = useState<Array<{ email: string; name: string }>>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [createColumn, setCreateColumn] = useState<keyof ProjectsState | null>(null)
@@ -264,6 +283,78 @@ export function Kanban() {
     fromDate: "",
     toDate: "",
   })
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_CARDS_PER_PAGE)
+
+  // Fetch users and projects from API
+  useEffect(() => {
+    fetchUsers()
+    fetchProjects()
+  }, [])
+
+  const fetchUsers = async () => {
+    try {
+      const fetchedUsers = await api.getUsers()
+      setUsers(
+        fetchedUsers.map((user) => ({
+          email: user.email,
+          name: user.name,
+        }      ))
+      )
+    } catch (err) {
+      // Silently handle user fetch errors
+    }
+  }
+
+  const fetchProjects = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      // For Kanban, we fetch all projects (no pagination on backend for Kanban view)
+      // Since Kanban has its own per-column pagination
+      const apiFilters: any = {
+        limit: 1000, // Fetch all projects for Kanban view
+      }
+      if (filters.fromDate) apiFilters.fromDate = filters.fromDate
+      if (filters.toDate) apiFilters.toDate = filters.toDate
+      if (filters.assignees.length > 0) {
+        apiFilters.assignee = filters.assignees[0]
+      }
+
+      const result = await api.getProjects(apiFilters)
+      const normalizedProjects = result.projects.map(normalizeProject)
+
+      // Apply client-side filtering for multiple assignees
+      let filtered = normalizedProjects
+      if (filters.assignees.length > 0) {
+        filtered = normalizedProjects.filter((project) =>
+          filters.assignees.some((email) => project.assignees.includes(email))
+        )
+      }
+
+      // Group projects by status
+      const grouped: ProjectsState = {
+        planning: [],
+        "in-progress": [],
+        completed: [],
+      }
+
+      filtered.forEach((project) => {
+        const column = statusToColumn(project.status)
+        grouped[column].push(project)
+      })
+
+      setProjects(grouped)
+    } catch (err: any) {
+      setError(err.message || "Failed to fetch projects")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Refetch when filters change
+  useEffect(() => {
+    fetchProjects()
+  }, [filters.fromDate, filters.toDate])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -277,7 +368,7 @@ export function Kanban() {
     setActiveId(event.active.id as string)
   }
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
 
     if (!over) {
@@ -289,7 +380,7 @@ export function Kanban() {
     const overId = over.id as string
 
     // Find the project and its current column
-    let activeProject: Project | null = null
+    let activeProject: ProjectWithId | null = null
     let activeColumn: keyof ProjectsState | null = null
     let activeIndex = -1
 
@@ -317,14 +408,23 @@ export function Kanban() {
         return
       }
 
-      setProjects((prev) => {
-        const newProjects = { ...prev }
-        newProjects[activeColumn!] = newProjects[activeColumn!].filter(
-          (p) => p.id !== activeId
-        )
-        newProjects[newColumn] = [...newProjects[newColumn], activeProject!]
-        return newProjects
-      })
+      // Update status in backend
+      try {
+        const newStatus = columnToStatus(newColumn)
+        await api.updateProject(activeProject._id, { status: newStatus })
+        
+        // Update local state
+        setProjects((prev) => {
+          const newProjects = { ...prev }
+          newProjects[activeColumn!] = newProjects[activeColumn!].filter(
+            (p) => p.id !== activeId
+          )
+          newProjects[newColumn] = [...newProjects[newColumn], { ...activeProject!, status: newStatus }]
+          return newProjects
+        })
+      } catch (err: any) {
+        alert(err.message || "Failed to update project status")
+      }
     } else {
       // If dropped on another card, find its column and index
       let targetColumn: keyof ProjectsState | null = null
@@ -341,7 +441,7 @@ export function Kanban() {
 
       if (targetColumn) {
         if (activeColumn === targetColumn) {
-          // Reordering within the same column
+          // Reordering within the same column - just update local state
           setProjects((prev) => {
             const newProjects = { ...prev }
             const columnItems = [...newProjects[activeColumn!]]
@@ -349,18 +449,27 @@ export function Kanban() {
             return newProjects
           })
         } else {
-          // Moving to a different column
-          setProjects((prev) => {
-            const newProjects = { ...prev }
-            const sourceItems = [...newProjects[activeColumn!]]
-            const targetItems = [...newProjects[targetColumn!]]
+          // Moving to a different column - update status in backend
+          try {
+            const newStatus = columnToStatus(targetColumn)
+            await api.updateProject(activeProject._id, { status: newStatus })
             
-            newProjects[activeColumn!] = sourceItems.filter((p) => p.id !== activeId)
-            targetItems.splice(targetIndex, 0, activeProject!)
-            newProjects[targetColumn!] = targetItems
-            
-            return newProjects
-          })
+            // Update local state
+            setProjects((prev) => {
+              const newProjects = { ...prev }
+              const sourceItems = [...newProjects[activeColumn!]]
+              const targetItems = [...newProjects[targetColumn!]]
+              
+              newProjects[activeColumn!] = sourceItems.filter((p) => p.id !== activeId)
+              targetItems.splice(targetIndex, 0, { ...activeProject!, status: newStatus })
+              newProjects[targetColumn!] = targetItems
+              
+              return newProjects
+            })
+          } catch (err: any) {
+            console.error("Failed to update project status:", err)
+            alert(err.message || "Failed to update project status")
+          }
         }
       }
     }
@@ -373,30 +482,24 @@ export function Kanban() {
     setIsCreateOpen(true)
   }
 
-  const handleCreate = (data: ProjectFormData) => {
+  const handleCreate = async (data: ProjectFormData) => {
     if (!createColumn) return
 
-    const statusMap: Record<keyof ProjectsState, ProjectFormData["status"]> = {
-      planning: "Planning",
-      "in-progress": "In Progress",
-      completed: "Completed",
+    try {
+      await api.createProject({
+        name: data.name,
+        description: data.description,
+        status: data.status,
+        priority: data.priority,
+        assignees: data.assignees,
+        dueDate: data.dueDate,
+      })
+      await fetchProjects() // Refetch to get updated list
+      setIsCreateOpen(false)
+      setCreateColumn(null)
+    } catch (err: any) {
+      alert(err.message || "Failed to create project")
     }
-
-    const newProject: Project = {
-      id: Date.now().toString(),
-      name: data.name,
-      priority: data.priority,
-      assignees: data.assignees,
-      dueDate: data.dueDate,
-    }
-
-    setProjects((prev) => ({
-      ...prev,
-      [createColumn]: [...prev[createColumn], newProject],
-    }))
-
-    setIsCreateOpen(false)
-    setCreateColumn(null)
   }
 
   const getInitialFormData = (): ProjectFormData | undefined => {
@@ -419,43 +522,32 @@ export function Kanban() {
   }
 
 
-  // Filter projects based on filters
+  // Projects are already filtered in fetchProjects
   const filteredProjects: ProjectsState = useMemo(() => {
-    const filterFn = (projectList: Project[]) => {
-      return projectList.filter((project) => {
-        // Filter by assignees
-        if (filters.assignees.length > 0) {
-          const hasMatchingAssignee = filters.assignees.some((email) =>
-            project.assignees.includes(email)
-          )
-          if (!hasMatchingAssignee) return false
-        }
-
-        // Filter by date range
-        if (filters.fromDate && project.dueDate < filters.fromDate) {
-          return false
-        }
-        if (filters.toDate && project.dueDate > filters.toDate) {
-          return false
-        }
-
-        return true
-      })
-    }
-
-    return {
-      planning: filterFn(projects.planning),
-      "in-progress": filterFn(projects["in-progress"]),
-      completed: filterFn(projects.completed),
-    }
-  }, [projects, filters])
+    return projects
+  }, [projects])
 
   return (
     <>
       <div className="mb-4">
         <ProjectFilters filters={filters} onFiltersChange={setFilters} />
       </div>
-      <DndContext
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <span className="ml-2 text-muted-foreground">Loading projects...</span>
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <p className="text-destructive mb-2">{error}</p>
+            <Button variant="outline" onClick={fetchProjects}>
+              Retry
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
@@ -467,18 +559,27 @@ export function Kanban() {
             projects={filteredProjects.planning}
             id="planning"
             onAddCard={handleAddCard}
+            users={users}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
           />
           <KanbanColumn
             title="In Progress"
             projects={filteredProjects["in-progress"]}
             id="in-progress"
             onAddCard={handleAddCard}
+            users={users}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
           />
           <KanbanColumn
             title="Completed"
             projects={filteredProjects.completed}
             id="completed"
             onAddCard={handleAddCard}
+            users={users}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
           />
         </div>
       <DragOverlay>
@@ -495,6 +596,7 @@ export function Kanban() {
         ) : null}
       </DragOverlay>
       </DndContext>
+      )}
 
       <ProjectForm
         open={isCreateOpen}
